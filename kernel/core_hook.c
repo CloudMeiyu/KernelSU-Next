@@ -49,11 +49,11 @@
 
 static bool ksu_module_mounted = false;
 
-extern int handle_sepolicy(unsigned long arg3, void __user *arg4);
+extern int ksu_handle_sepolicy(unsigned long arg3, void __user *arg4);
 
 static inline bool is_allow_su()
 {
-	if (is_manager()) {
+	if (ksu_is_manager()) {
 		// we are manager, allow!
 		return true;
 	}
@@ -113,7 +113,7 @@ static void setup_groups(struct root_profile *profile, struct cred *cred)
 }
 
 
-void escape_to_root(void)
+void ksu_escape_to_root(void)
 {
 	struct cred *cred;
 	
@@ -123,7 +123,7 @@ void escape_to_root(void)
 		pr_warn("Already root, don't escape!\n");
 		return;
 	}
-#endif
+
 
 	struct root_profile *profile = ksu_get_root_profile(cred->uid.val);
 
@@ -168,7 +168,7 @@ void escape_to_root(void)
 	// disable_seccomp();
 	// spin_unlock_irq(&current->sighand->siglock);
 
-	setup_selinux(profile->selinux_domain);
+	ksu_setup_selinux(profile->selinux_domain);
 }
 
 int ksu_handle_rename(struct dentry *old_dentry, struct dentry *new_dentry)
@@ -205,7 +205,7 @@ int ksu_handle_rename(struct dentry *old_dentry, struct dentry *new_dentry)
 	pr_info("renameat: %s -> %s, new path: %s\n", old_dentry->d_iname,
 		new_dentry->d_iname, buf);
 
-	track_throne();
+	ksu_track_throne();
 
 	return 0;
 }
@@ -230,7 +230,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 	}
 
 	bool from_root = 0 == current_uid().val;
-	bool from_manager = is_manager();
+	bool from_manager = ksu_is_manager();
 
 	if (!from_root && !from_manager) {
 		// only root or manager can access this interface
@@ -254,7 +254,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 	if (arg2 == CMD_GRANT_ROOT) {
 		if (is_allow_su()) {
 			pr_info("allow root for: %d\n", current_uid().val);
-			escape_to_root();
+			ksu_escape_to_root();
 			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
 				pr_err("grant_root: prctl reply error\n");
 			}
@@ -289,7 +289,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 			if (!post_fs_data_lock) {
 				post_fs_data_lock = true;
 				pr_info("post-fs-data triggered\n");
-				on_post_fs_data();
+				ksu_on_post_fs_data();
 			}
 			break;
 		}
@@ -316,7 +316,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		if (!from_root) {
 			return 0;
 		}
-		if (!handle_sepolicy(arg3, arg4)) {
+		if (!ksu_handle_sepolicy(arg3, arg4)) {
 			if (copy_to_user(result, &reply_ok, sizeof(reply_ok))) {
 				pr_err("sepolicy: prctl reply error\n");
 			}
@@ -525,7 +525,7 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 	// check old process's selinux context, if it is not zygote, ignore it!
 	// because some su apps may setuid to untrusted_app but they are in global mount namespace
 	// when we umount for such process, that is a disaster!
-	bool is_zygote_child = is_zygote(old->security);
+	bool is_zygote_child = ksu_is_zygote(old->security);
 	if (!is_zygote_child) {
 		pr_info("handle umount ignore non zygote child: %d\n",
 			current->pid);
